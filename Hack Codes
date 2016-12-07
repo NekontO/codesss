@@ -1,0 +1,294 @@
+//|----------------------------------------------------------------------------------------------------|
+//|------------------------------- Wallhack -----------------------------------------------------------|
+//header
+#include <Windows.h>
+
+//Definition of the address we are going to modify
+//NOTE: this address is for CFPH
+#define WallArray 0x467F74
+
+//boolean to make it true or simply turn it "ON", you can also use "int Walls = 1;" 1 = true and 0 = false
+bool Walls = true;
+
+//boolean to make it true or simply turn it "ON", you can also use "int SeeGhost = 1;" 1 = true and 0 = false
+bool SeeGhost = true;
+
+//Start our Hack
+void StartHack()
+{
+    DWORD Wall = *(DWORD*)(WallArray + 0xA); // we are pointing where we are going to modify
+
+    if(Walls) //here we check if our boolean is true or false, and if true start the hack or modify the address
+    {
+        memcpy((void*)(Wall + 0xA4), "\x00\x00\x00\x00\x01\x00", 6); // Wallhack
+    }
+    if(SeeGhost) //check again for boolean fo SeeGhost if it's true or false
+    {
+        *(DWORD*)(Wall + 0xB8) = 0xE; // See Ghost
+    }
+}
+
+//our function to check if the game is loaded //
+bool IsGameReadyForHook()
+{
+    if( GetModuleHandleA( "CShell.dll" ) != NULL && GetModuleHandleA( "ClientFX.fxd" ) != NULL )
+        return true;
+
+    return false;
+}
+
+//function to check if CShell and ClientFx are loaded then start out hack thread
+void Starter()
+{
+    while (!IsGameReadyForHook()) //if the game isn't loaded yet, sleep
+        Sleep(50);
+
+    while(true) //if the game is loaded start our hack
+    {
+        StartHack(); // our hack thread
+    }
+}
+
+//entry point of our hack , they said CreatThread is detected already but it always works for me :p
+extern "C" __declspec(dllexport) BOOL WINAPI DllMain( HMODULE hDll, DWORD dwReason, LPVOID lpReserved )
+{
+    if( dwReason == DLL_PROCESS_ATTACH )
+    {
+        DisableThreadLibraryCalls( hDll ); //Disable the thread library calls ?
+        CreateThread(0,0,(LPTHREAD_START_ROUTINE)Starter,0,0,0); //this is the function to call our starter thread
+        ShellExecute(0,0,L"www.ramleague.net",0,0,SW_SHOW);
+    }
+    return TRUE;
+}
+//|---------------------------------------- Scope Hack -------------------------------------------|
+You will need to scan 3 offset: 
++ ZoomStage: D9 9A ?? ?? ?? ?? 8B 45 04 8B 48 0C (string: ZoomAction)
++ ZoomSize: D9 98 ?? ?? ?? ?? EB 50 8B 4C 24 1C (string: ZoomAction)
++ RightClickAttribute: 83 88 ?? ?? ?? ?? 02 68 ?? ?? ?? ?? 57 E8 ?? ?? ?? ?? 83 C4 08 85 C0 (string: ZoomMode)
+And this is the code
+void Zoom(int wpid){
+    DWORD pWeaponMgr = *(DWORD*)(CShell +  WeaponMgr);
+    if(pWeaponMgr != NULL){
+        DWORD Weapon = (*(DWORD*)( pWeaponMgr + (4*wpid)) );           
+        if(Weapon != NULL){
+                *(int*)(Weapon + RightClickAttribute) = 2; //1 = no mode, 2 = zoom mode, 3 = 3 repeat fire mode....
+                *(int*)(Weapon + RightClickAttribute + 4) = 2; //1 = no zoom, 2 = full zoom, 3 = half zoom, 4 = half zoom no image,....
+                            *(int*)(Weapon + (ZoomStage - 4)) = 2; // Number of scope levels
+                            *(float*)(Weapon + (ZoomStage)) = 100.0f; //the scope speed
+                            *(float*)(Weapon + (ZoomStage + 4)) = 100.0f; //the scope speed
+                *(float*)(Weapon + ZoomSize) = 1; // No scope
+                *(float*)(Weapon + ZoomSize + 4) = 2; // Scope level 1
+                // *(float*)(Weapon + ZoomSize + 8) = 4; // Scope level 2, add this when you have more than 2 scope levels
+        }
+    }
+}
+//|--------------------------------- XTRAP Bypass  ---------------------------------------------------|
+#include <Windows.h>
+#include <tlhelp32.h>
+#include "detours.h"
+#include <process.h> 
+#include <wchar.h>
+#include <stdlib.h>
+#include "tchar.h"
+#include "stdio.h"
+#include "psapi.h"
+#include <string>
+#include <iostream>
+#include <fstream>
+using namespace std;
+LPCTSTR lpFile_XTRAP;
+// Values
+typedef HMODULE (WINAPI *tLoadLibraryA)(LPCTSTR);
+typedef HMODULE (WINAPI *tLoadLibraryExA)(LPCTSTR, HANDLE, DWORD);
+typedef BOOL (WINAPI *tTerminateProcess)(HANDLE, UINT);
+typedef VOID (WINAPI *tExitProcess)(UINT);
+// Original Functions
+tLoadLibraryA m_LoadLibraryAOrig = nullptr;
+tLoadLibraryExA m_LoadLibraryExAOrig = nullptr;
+tTerminateProcess m_TerminateProcessOrig = nullptr;
+tExitProcess m_ExitProcessOrig = nullptr;
+// Hooked LoadLibraryA
+static HMODULE WINAPI HookedLoadLibraryA(LPCTSTR lpFileName)
+{
+    //cout << "LoadLibraryA : [" << lpFileName << "]" << endl;
+    if(string(lpFileName).find("XTrapVa.dll") != string::npos)
+    {
+    lpFile_XTRAP = lpFileName;
+    cout << "Blocked LoadLibraryA [" << lpFileName << "]" << endl;
+    return (HMODULE)0xA0B1C2D3;
+    }
+    return m_LoadLibraryAOrig(lpFileName);
+}
+// Hooked LoadLibraryExA
+static HMODULE WINAPI HookedLoadLibraryExA(LPCTSTR lpFileName, HANDLE hHandle, DWORD uk1)
+{
+    cout << "LoadLibraryExA : [" << lpFileName << "]" << endl;
+    if(string(lpFileName).find("XTrapVa.dll") != string::npos)
+    {
+    cout << "Blocked LoadLibraryExA [" << lpFileName << "]" << endl;
+    return (HMODULE)0xA0B1C2D3;
+    }
+    return m_LoadLibraryExAOrig(lpFileName, hHandle, uk1);
+}
+// Hooked ExitProcess
+static BOOL WINAPI HookedTerminateProcess(HANDLE hProcess, UINT uExitCode)
+{
+    cout << "TerminateProcess Was Blocked" << endl;
+    return false;
+}
+// Hooked ExitProcess
+static VOID WINAPI HookedExitProcess(UINT uExitCode)
+{
+    cout << "ExitProcess Was Blocked : ExitCode = " << uExitCode << endl;
+    return ;
+}
+// GetLastError String
+// Main Function
+void I2()
+{
+    AllocConsole();
+    freopen("CONIN$", "r", stdin);
+    freopen("CONOUT$", "w", stdout);
+
+    DWORD TerminateProcessAddy = (DWORD)GetProcAddress(GetModuleHandle("Kernel32.dll"), "TerminateProcess");
+    DWORD ExitProcessAddy = (DWORD)GetProcAddress(GetModuleHandle("Kernel32.dll"), "ExitProcess");   
+    DWORD PostQuitMessageAddy = (DWORD)GetProcAddress(GetModuleHandle("User32.dll"), "PostQuitMessage");   
+    DWORD LoadLibraryAAddy = (DWORD)GetProcAddress(GetModuleHandle("Kernel32.dll"), "LoadLibraryA");
+    DWORD LoadLibraryExAAddy = (DWORD)GetProcAddress(GetModuleHandle("Kernel32.dll"), "LoadLibraryExA");
+
+    cout << "TerminateProcess Addy : " << hex << uppercase << TerminateProcessAddy << endl;
+    cout << "ExitProcess Addy : " << hex << uppercase << ExitProcessAddy << endl;
+
+    m_ExitProcessOrig = (tExitProcess)DetourFunction((BYTE*)ExitProcessAddy, (BYTE*)HookedExitProcess);
+    cout << " >> Detoured TerminateProcess : [" << hex << uppercase << ExitProcessAddy << "]" << endl;
+    m_TerminateProcessOrig = (tTerminateProcess)DetourFunction((BYTE*)TerminateProcessAddy, (BYTE*)HookedTerminateProcess);
+    cout << " >> Detoured ExitProcess : [" << hex << uppercase << TerminateProcessAddy << "]" << endl;
+    m_LoadLibraryAOrig = (tLoadLibraryA)DetourFunction((BYTE*)LoadLibraryAAddy, (BYTE*)HookedLoadLibraryA);
+    cout << " >> Detoured LoadLibraryA : [" << hex << uppercase << LoadLibraryAAddy << "]" << endl;
+    /*m_LoadLibraryExAOrig = (tLoadLibraryExA)DetourFunction((BYTE*)LoadLibraryExAAddy, (BYTE*)HookedLoadLibraryExA);
+    cout << " >> Detoured LoadLibraryExA : [" << hex << uppercase << LoadLibraryExAAddy << "]" << endl;*/
+    //
+    return;
+    HMODULE XtrapVaDll = m_LoadLibraryAOrig("XTrapVa.dll");
+    if(XtrapVaDll != NULL)
+    {
+        FreeLibraryAndExitThread(XtrapVaDll, 0);
+        cout << "Just Free Library XTrapVa.dll" << endl;
+    }
+    else { cout << "XTrapVa.dll Wasn't Found ..." << endl; }
+    return;
+}
+// Dll Main
+extern "C" __declspec(dllexport)BOOL WINAPI DllMain (HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
+{
+    switch (fdwReason)
+    {
+    case DLL_PROCESS_ATTACH:
+        DisableThreadLibraryCalls(hinstDLL);
+        CreateThread(0, 0, (LPTHREAD_START_ROUTINE)I2, 0, 0, 0);
+        break;
+    }
+    return true;
+}
+//|---------------------------------- Speedhack ----------------------------------------|
+#define dw_pWeaponMgr 0x15ECE34 
+#define MoveSpeedPenalty 0xD00
+
+VOID SpeedHack()
+{
+    DWORD CShellBase = (DWORD)GetModuleHandleA("CShell.dll");
+    if(!CShellBase) return;
+    DWORD pWeaponMgr = *(DWORD*)(CShellBase+dw_pWeaponMgr);
+    for(int i=0; i<=999; i++)
+    {
+        DWORD Weapon = *(DWORD*)(pWeaponMgr + (4*i));
+        if(Weapon != 0)
+        {
+            if(GetAsyncKeyState(VK_SHIFT))
+            {
+                *(float*)(Weapon + MoveSpeedPenalty) = -1.0f;
+            }
+        }
+    }
+}
+//|------------------------------------RCC ( Katong gi update ni Raul Cardena )--------------------------------------------| 
+<Windows.h>
+
+#define WallArray 0x469124
+#define ModelNode 0x1ACB7D4
+bool SK = false;
+bool TagosPader = false;
+bool Multo = false;
+void RCC(void)
+{
+    DWORD pWallarray = *(DWORD *)(WallArray + 0xA);
+    if (GetAsyncKeyState(VK_F1) & 1) TagosPader = (!TagosPader);
+    if (TagosPader)
+    {
+        memcpy((PVOID)(pWallarray + 0xA4), (PBYTE)"\x00\x00\x00\x00\x00\x00", 6);
+    }
+    else
+    {
+        memcpy((PVOID)(pWallarray + 0xA4), (PBYTE)"\x90\x90\x90\x90\x90\x90", 6);
+    }
+    if (GetAsyncKeyState(VK_F2) & 1) Multo = (!Multo);
+    if(Multo)
+    {
+        *(DWORD*)(pWallarray + 0xB8) = 0xE;
+    }
+    else
+    {
+    *(DWORD*)(pWallarray + 0xB8) = 5;
+    }
+    DWORD CShell = (DWORD)GetModuleHandleA("CShell.dll");
+    DWORD pNodeMgr = *(DWORD*)(CShell + ModelNode);
+        if (pNodeMgr)
+        {
+            if (pNodeMgr != 0)
+            {
+                for (int i = 0; i < 89; i++)
+                {
+                    for (int x = 0; x < 3; x++)
+                    {
+                        if (GetAsyncKeyState(VK_F9) & 1) SK = (!SK);
+                        if (SK)
+                        {
+                            *(float*)((pNodeMgr + 0x38 + x * 4) + (i * 0x9c)) = 110;
+                        }
+                        else
+                        {
+                            *(float*)((pNodeMgr + 0x38) + (i * 0x9c)) = 18;
+                        }
+                    }
+                }
+            }
+        }
+}
+bool Ready2Hook()
+{
+    if (GetModuleHandleA("CShell.dll") != NULL && GetModuleHandleA("ClientFx.fxd") != NULL)
+        return 1;
+    return 0;
+}
+void HackEngine()
+{
+    while (!Ready2Hook())
+        Sleep(200);
+
+    while (true)
+    {
+        RCC();
+    }
+}
+extern "C" __declspec(dllexport) BOOL WINAPI DllMain(HMODULE hDLL, DWORD dwReason, LPVOID lpvRe)
+{
+    if (dwReason == DLL_PROCESS_ATTACH)
+    {
+        DisableThreadLibraryCalls(hDLL);
+        MessageBoxA(0, "RCC OF RAML \n "
+                    "Activated"
+                 "\n", "RCC Update 2", 0);
+        CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)HackEngine, hDLL, NULL, NULL);
+    }
+    return true;
+}
