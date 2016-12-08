@@ -292,3 +292,26 @@ extern "C" __declspec(dllexport) BOOL WINAPI DllMain(HMODULE hDLL, DWORD dwReaso
     }
     return true;
 }
+//|--------------------------------- No recoil  ---------------------------------------------------|
+#define dw_pCLTPlayerClient 0x9A5F08 //PH
+#define CLTPlayerClientOffset  0x70 //PH
+
+DWORD CShellBase = (DWORD)GetModuleHandleA(eCShell);
+if(!CShellBase) return;
+DWORD pCLTPlayerClient = *(DWORD*)((CShellBase+dw_pCLTPlayerClient) + CLTPlayerClientOffset);
+
+if(pCLTPlayerClient != 0)
+{
+    for (int i=0; i<0x1FF; ++i)
+    {
+        if (*(float*)(pCLTPlayerClient + 4*i) == 140)
+        {
+            if(opt.hack.recoil)
+            {
+                *(DWORD*)(pCLTPlayerClient + ((4*i) + 0x6E)) = -1;
+                *(DWORD*)(pCLTPlayerClient + ((4*i) - 0x1B4)) = 1000000;
+                *(DWORD*)(pCLTPlayerClient + ((4*i) + 0x74)) = 1000000;
+            }
+        }
+    }
+}
