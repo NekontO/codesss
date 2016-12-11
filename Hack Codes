@@ -267,7 +267,9 @@ void RCC(void)
 bool Ready2Hook()
 {
     if (GetModuleHandleA("CShell.dll") != NULL && GetModuleHandleA("ClientFx.fxd") != NULL)
-        return 1;
+
+
+return 1;
     return 0;
 }
 void HackEngine()
@@ -314,4 +316,20 @@ if(pCLTPlayerClient != 0)
             }
         }
     }
+}//|--------------------------------- No Fall Damage  ---------------------------------------------------|
+#define FallDamagePointer 0x18542F4
+#define FallDamageOffset 0x4
+
+int fall = 1;
+
+void MyBase()
+{
+    DWORD ShellBase = (DWORD)GetModuleHandle("CShell.dll");
+    DWORD PlayerFallDamage = *(DWORD*)(ShellBase + FallDamagePointer);
+    
+    if(fall)
+    {
+        *(float*)(PlayerFallDamage + FallDamageOffset) = 0;
+    }    
 }
+    
